@@ -1,0 +1,926 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Double-Slit Experiment — WebGL Particle Simulation</title>
+<style>
+  * { box-sizing: border-box; }
+  html, body { margin: 0; height: 100%; overflow: hidden; }
+  body {
+    background: radial-gradient(ellipse at 50% 40%, #0a0f1a 0%, #05070c 70%);
+    color: #cfe3ff;
+    font: 13px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  }
+  canvas { position: fixed; inset: 0; width: 100%; height: 100%; display: block; }
+  #overlay { pointer-events: none; }
+
+  #panel {
+    position: fixed; top: 14px; left: 14px; width: 300px;
+    max-height: calc(100vh - 28px); overflow-y: auto;
+    background: rgba(10, 16, 28, 0.82);
+    border: 1px solid rgba(120, 170, 255, 0.18);
+    border-radius: 12px; padding: 16px 18px;
+    backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px);
+  }
+  #panel h1 { margin: 0; font-size: 17px; font-weight: 650; color: #eaf3ff; letter-spacing: .01em; }
+  #panel .sub { margin: 2px 0 14px; font-size: 12px; color: #8fa8cc; }
+
+  .modes { display: flex; gap: 6px; margin: 0 0 10px; }
+  .modes button.active {
+    background: rgba(80, 150, 255, 0.32);
+    border-color: rgba(140, 190, 255, 0.55);
+    color: #fff;
+  }
+  #modeBlurb { margin: 0 0 12px; font-size: 12px; color: #93a9cb; }
+  .subctl.disabled { opacity: 0.4; pointer-events: none; }
+
+  .toggle { display: flex; align-items: center; gap: 9px; cursor: pointer; margin: 4px 0 12px; user-select: none; }
+  .toggle input { accent-color: #ff8a4d; width: 16px; height: 16px; cursor: pointer; }
+  .toggle .tlabel { font-weight: 600; color: #ffd9c0; }
+  .toggle small { display: block; font-weight: 400; color: #8fa8cc; }
+
+  .row { display: grid; grid-template-columns: 86px 1fr 44px; align-items: center; gap: 8px; margin: 7px 0; }
+  .row label { color: #a9bfe0; }
+  .row .val { text-align: right; color: #eaf3ff; font-variant-numeric: tabular-nums; }
+  input[type="range"] { width: 100%; accent-color: #4dc3ff; height: 18px; cursor: pointer; }
+
+  .check { display: flex; align-items: center; gap: 8px; margin: 10px 0 6px; cursor: pointer; user-select: none; color: #a9bfe0; }
+  .check input { accent-color: #4dc3ff; cursor: pointer; }
+
+  .btns { display: flex; gap: 8px; margin: 12px 0 4px; }
+  button {
+    flex: 1; padding: 7px 0; border-radius: 8px; cursor: pointer;
+    border: 1px solid rgba(120, 170, 255, 0.28);
+    background: rgba(60, 110, 200, 0.16); color: #dcebff;
+    font: 600 12px/1 inherit; letter-spacing: .02em;
+  }
+  button:hover { background: rgba(80, 140, 240, 0.28); }
+  #stats { margin-top: 10px; font-size: 12px; color: #8fa8cc; font-variant-numeric: tabular-nums; }
+  #stats b { color: #7fe0ff; font-weight: 650; }
+
+  details { margin-top: 12px; border-top: 1px solid rgba(120,170,255,0.14); padding-top: 10px; }
+  summary { cursor: pointer; color: #a9bfe0; font-weight: 600; font-size: 12px; }
+  details p { font-size: 12px; color: #93a9cb; margin: 8px 0 0; }
+  details b { color: #cfe3ff; }
+  details .formula { font-family: ui-monospace, Menlo, monospace; font-size: 11px; color: #7fe0ff; }
+
+  #nogl {
+    position: fixed; inset: 0; display: flex; align-items: center; justify-content: center;
+    text-align: center; padding: 40px; font-size: 15px; color: #cfe3ff;
+  }
+  #nogl[hidden] { display: none; }
+  @media (max-width: 640px) { #panel { width: calc(100vw - 28px); max-height: 46vh; } }
+</style>
+</head>
+<body>
+<canvas id="gl"></canvas>
+<canvas id="overlay"></canvas>
+
+<div id="panel">
+  <h1>Double-slit experiment</h1>
+  <p class="sub">Quantum interference, one particle at a time</p>
+
+  <div class="modes">
+    <button id="modeTheory" class="active">Theory</button>
+    <button id="modePractical">Real experiment</button>
+  </div>
+  <p id="modeBlurb"></p>
+
+  <div id="theoryCtrls">
+    <label class="toggle">
+      <input type="checkbox" id="observe">
+      <span><span class="tlabel">Which-path detector</span>
+      <small>“Observe” which slit each particle uses</small></span>
+    </label>
+  </div>
+
+  <div id="practicalCtrls" style="display:none">
+    <label class="toggle">
+      <input type="checkbox" id="tagging">
+      <span><span class="tlabel">Polarization tags</span>
+      <small>A twist filter on each slit labels its photons</small></span>
+    </label>
+    <div id="eraserCtls" class="subctl disabled">
+      <label class="toggle">
+        <input type="checkbox" id="eraser">
+        <span><span class="tlabel">Quantum eraser</span>
+        <small>A polarizer wipes the label before the screen</small></span>
+      </label>
+      <div class="row" id="angleRow" style="display:none"><label>Eraser angle</label><input type="range" id="angle" min="0" max="180" step="5" value="0"><span class="val" id="angleVal"></span></div>
+    </div>
+  </div>
+
+  <div class="row"><label>Rate</label><input type="range" id="rate" min="60" max="20000" step="20" value="1200"><span class="val" id="rateVal"></span></div>
+  <div class="row"><label>Wavelength λ</label><input type="range" id="lambda" min="0.008" max="0.045" step="0.001" value="0.02"><span class="val" id="lambdaVal"></span></div>
+  <div class="row"><label>Slit distance d</label><input type="range" id="sep" min="0.10" max="0.40" step="0.005" value="0.22"><span class="val" id="sepVal"></span></div>
+  <div class="row"><label>Slit width a</label><input type="range" id="width" min="0.02" max="0.09" step="0.002" value="0.05"><span class="val" id="widthVal"></span></div>
+
+  <label class="check"><input type="checkbox" id="curve" checked> Show theoretical curve</label>
+
+  <div class="btns">
+    <button id="pauseBtn">Pause</button>
+    <button id="resetBtn">Reset detector</button>
+  </div>
+  <div id="stats">detected: <b id="count">0</b><span id="blockedStat" style="display:none"> &nbsp;·&nbsp; blocked: <b id="blockedNum">0</b></span></div>
+
+  <details open>
+    <summary>What am I looking at?</summary>
+    <p><b>The setup.</b> A source fires photons — particles of light — one at
+    a time at a wall with two narrow slits. Photons that get through land on a
+    screen, and each one makes a single tiny dot. The panel on the right shows
+    the screen face-on, filling in dot by dot.</p>
+    <p><b>The surprise.</b> The dots don’t pile up into two bands behind the
+    two slits, the way bullets would. They form <em>stripes</em>. Stripes are
+    the signature of a wave: each photon travels as a wave that passes through
+    <em>both</em> slits at once, and the two ripples overlap on the far side.
+    Where crest meets crest, a landing is likely — a bright stripe. Where
+    crest meets trough, the ripples cancel and no photon ever lands — a dark
+    gap. Yet every photon still arrives as one dot; the wave only sets the
+    odds of where.</p>
+    <p><b>Theory mode.</b> Quantum mechanics makes a wild claim: the stripes
+    survive only as long as <em>nothing in the universe</em> keeps a record of
+    which slit each photon used. The which-path switch is that claim in its
+    purest, idealized form — flip it, and a record exists, each photon is
+    forced to act like it took one slit, and the stripes collapse into two
+    ordinary overlapping heaps.</p>
+    <p><b>Real-experiment mode.</b> How do you actually build such a
+    “detector”? With polarization — the direction a light wave wiggles. Put a
+    different filter on each slit: one twists its photons clockwise
+    (<span style="color:#ff6eb4">pink</span> in the animation), the other
+    counter-clockwise (<span style="color:#6eff8c">green</span>). The twist is
+    a label riding on each photon that says which slit it came through. No
+    person and no instrument ever reads the label — but merely because the
+    label <em>exists</em>, the stripes vanish. This is a real tabletop
+    experiment done with lasers and standard optics parts.</p>
+    <p><b>The quantum eraser.</b> Now add one more filter just before the
+    screen — one that forces every photon passing it into the very same
+    polarization. The label is wiped out before landing, and the stripes come
+    back, at a price: the filter swallows half the photons. Rotate the eraser
+    and the stripes slide sideways; at 90° bright and dark trade places. The
+    swallowed half would have drawn exactly those opposite stripes — the two
+    halves add up to a stripeless blur, which is why the tagged pattern shows
+    no stripes until the eraser sorts the photons apart.</p>
+    <p><b>Fine print.</b> Landing spots are drawn from the real optics
+    formula, <span class="formula">I(θ) ∝ cos²(πd·sinθ/λ) ·
+    sinc²(πa·sinθ/λ)</span>. Changing λ, d, a, the mode, or any filter resets
+    the screen so patterns don’t mix.</p>
+  </details>
+</div>
+
+<div id="nogl" hidden>WebGL is not available in this browser, so the simulation cannot run.</div>
+
+<script>
+"use strict";
+(function () {
+
+  // ---------- state & constants ----------
+  var state = {
+    mode: "theory",        // "theory" | "practical"
+    rate: 1200,
+    wavelength: 0.02,
+    slitSep: 0.22,
+    slitWidth: 0.05,
+    observe: false,        // theory mode: which-path detector
+    tagging: false,        // practical mode: quarter-wave plates on slits
+    eraser: false,         // practical mode: eraser polarizer before screen
+    eraserAngle: 0,        // degrees
+    paused: false,
+    showCurve: true
+  };
+
+  var EMIT_X = -0.92, BARRIER_X = -0.12, SCREEN_X = 0.92;
+  var POL_X = 0.5;                   // eraser polarizer plane
+  var SH = 0.85;                     // detector half-height (world units)
+  var L = SCREEN_X - BARRIER_X;      // slit-to-screen distance
+  var BARRIER_HH = 0.82;             // barrier half-height
+  var SPEED = 1.15;                  // particle speed (world units / s)
+  var MAX = 40000;                   // particle pool size (~20k/s × ~1.6s flight time)
+  var NN = 1024, INV = 2048;         // pdf resolution / inverse-cdf table size
+  var FILM_W = 256, FILM_H = 1024;   // detector-film texture resolution
+
+  // ---------- canvases ----------
+  var glCanvas = document.getElementById("gl");
+  var ovCanvas = document.getElementById("overlay");
+  var octx = ovCanvas.getContext("2d");
+  var gl = glCanvas.getContext("webgl", { antialias: false }) ||
+           glCanvas.getContext("experimental-webgl", { antialias: false });
+  if (!gl) {
+    document.getElementById("nogl").hidden = false;
+    document.getElementById("panel").style.display = "none";
+    return;
+  }
+
+  // ---------- GL helpers ----------
+  function makeShader(type, src) {
+    var s = gl.createShader(type);
+    gl.shaderSource(s, src);
+    gl.compileShader(s);
+    if (!gl.getShaderParameter(s, gl.COMPILE_STATUS))
+      throw new Error(gl.getShaderInfoLog(s));
+    return s;
+  }
+  function makeProgram(vs, fs) {
+    var p = gl.createProgram();
+    gl.attachShader(p, makeShader(gl.VERTEX_SHADER, vs));
+    gl.attachShader(p, makeShader(gl.FRAGMENT_SHADER, fs));
+    gl.linkProgram(p);
+    if (!gl.getProgramParameter(p, gl.LINK_STATUS))
+      throw new Error(gl.getProgramInfoLog(p));
+    return p;
+  }
+
+  // Glowing point sprite program (particles, flashes, film deposits)
+  var pointProg = makeProgram(
+    "attribute vec3 a_data;\n" +
+    "uniform vec2 u_scale; uniform vec2 u_offset; uniform float u_size;\n" +
+    "varying float v_alpha;\n" +
+    "void main(){\n" +
+    "  gl_Position = vec4(a_data.xy * u_scale + u_offset, 0.0, 1.0);\n" +
+    "  gl_PointSize = u_size;\n" +
+    "  v_alpha = a_data.z;\n" +
+    "}",
+    "precision mediump float;\n" +
+    "uniform vec3 u_color; varying float v_alpha;\n" +
+    "void main(){\n" +
+    "  float d = length(gl_PointCoord - 0.5) * 2.0;\n" +
+    "  float fall = clamp(1.0 - d, 0.0, 1.0);\n" +
+    "  float a = v_alpha * fall * fall;\n" +
+    "  gl_FragColor = vec4(u_color * a, a);\n" +
+    "}");
+  var pp = {
+    a_data: gl.getAttribLocation(pointProg, "a_data"),
+    u_scale: gl.getUniformLocation(pointProg, "u_scale"),
+    u_offset: gl.getUniformLocation(pointProg, "u_offset"),
+    u_size: gl.getUniformLocation(pointProg, "u_size"),
+    u_color: gl.getUniformLocation(pointProg, "u_color")
+  };
+
+  // Textured quad program (detector film display)
+  var texProg = makeProgram(
+    "attribute vec2 a_pos;\n" +
+    "uniform vec2 u_scale; uniform vec2 u_offset;\n" +
+    "varying vec2 v_uv;\n" +
+    "void main(){\n" +
+    "  gl_Position = vec4(a_pos * u_scale + u_offset, 0.0, 1.0);\n" +
+    "  v_uv = a_pos;\n" +
+    "}",
+    "precision mediump float;\n" +
+    "varying vec2 v_uv; uniform sampler2D u_tex; uniform vec3 u_tint;\n" +
+    "void main(){\n" +
+    "  float v = texture2D(u_tex, v_uv).r;\n" +
+    "  float t = 1.0 - exp(-v * 2.4);\n" +
+    "  vec3 c = u_tint * t + vec3(1.0) * t * t * 0.7;\n" +
+    "  gl_FragColor = vec4(c, 1.0);\n" +
+    "}");
+  var tp = {
+    a_pos: gl.getAttribLocation(texProg, "a_pos"),
+    u_scale: gl.getUniformLocation(texProg, "u_scale"),
+    u_offset: gl.getUniformLocation(texProg, "u_offset"),
+    u_tex: gl.getUniformLocation(texProg, "u_tex"),
+    u_tint: gl.getUniformLocation(texProg, "u_tint")
+  };
+
+  var pointBuf = gl.createBuffer();
+  var quadBuf = gl.createBuffer();
+  gl.bindBuffer(gl.ARRAY_BUFFER, quadBuf);
+  gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([0,0, 1,0, 0,1, 1,1]), gl.STATIC_DRAW);
+
+  // Detector-film accumulation texture + framebuffer
+  var filmTex = gl.createTexture();
+  gl.bindTexture(gl.TEXTURE_2D, filmTex);
+  gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, FILM_W, FILM_H, 0, gl.RGBA, gl.UNSIGNED_BYTE, null);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+  var filmFbo = gl.createFramebuffer();
+  gl.bindFramebuffer(gl.FRAMEBUFFER, filmFbo);
+  gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, filmTex, 0);
+  gl.clearColor(0, 0, 0, 1);
+  gl.clear(gl.COLOR_BUFFER_BIT);
+  gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+
+  // ---------- physics: intensity distributions & inverse-CDF sampling ----------
+  function sinc2(x) {
+    if (Math.abs(x) < 1e-7) return 1;
+    var s = Math.sin(x) / x;
+    return s * s;
+  }
+  function intensityQuantum(y) {
+    var u = y / Math.sqrt(L * L + y * y); // sin(theta)
+    var beta = Math.PI * state.slitWidth * u / state.wavelength;
+    var alpha = Math.PI * state.slitSep * u / state.wavelength;
+    var c = Math.cos(alpha);
+    return sinc2(beta) * c * c;
+  }
+  function intensitySlit(y, ys) {
+    var dy = y - ys;
+    var u = dy / Math.sqrt(L * L + dy * dy);
+    return sinc2(Math.PI * state.slitWidth * u / state.wavelength);
+  }
+  // Tagged photons projected onto a linear polarizer at angle theta:
+  // fringes return, shifted by 2*theta (anti-fringes at 90 degrees).
+  function intensityEraser(y) {
+    var u = y / Math.sqrt(L * L + y * y);
+    var beta = Math.PI * state.slitWidth * u / state.wavelength;
+    var alpha = Math.PI * state.slitSep * u / state.wavelength;
+    var th = state.eraserAngle * Math.PI / 180;
+    return sinc2(beta) * 0.5 * (1 + Math.cos(2 * alpha + 2 * th));
+  }
+
+  var pdfQ, pdfO, pdfE, invQ, invP, invM, invE;
+  function buildInv(pdf) {
+    var cdf = new Float32Array(NN), s = 0, i;
+    for (i = 0; i < NN; i++) { s += pdf[i]; cdf[i] = s; }
+    var inv = new Float32Array(INV), j = 0;
+    for (i = 0; i < INV; i++) {
+      var p = (i + 0.5) / INV * s;
+      while (j < NN - 1 && cdf[j] < p) j++;
+      inv[i] = -SH + (j + 0.5) * (2 * SH / NN);
+    }
+    return inv;
+  }
+  function rebuildTables() {
+    pdfQ = new Float32Array(NN);
+    pdfO = new Float32Array(NN);
+    pdfE = new Float32Array(NN);
+    var pP = new Float32Array(NN), pM = new Float32Array(NN);
+    for (var i = 0; i < NN; i++) {
+      var y = -SH + (i + 0.5) * (2 * SH / NN);
+      pdfQ[i] = intensityQuantum(y);
+      pP[i] = intensitySlit(y, state.slitSep / 2);
+      pM[i] = intensitySlit(y, -state.slitSep / 2);
+      pdfO[i] = pP[i] + pM[i];
+      pdfE[i] = intensityEraser(y);
+    }
+    invQ = buildInv(pdfQ);
+    invP = buildInv(pP);
+    invM = buildInv(pM);
+    invE = buildInv(pdfE);
+  }
+  function sampleFrom(inv) {
+    return inv[(Math.random() * INV) | 0] + (Math.random() - 0.5) * (2 * SH / NN);
+  }
+  // Is the interference cross-term alive in the current configuration?
+  function interferenceOn() {
+    if (state.mode === "theory") return !state.observe;
+    return !state.tagging || state.eraser;
+  }
+  // Sets _blocked when the sampled photon gets absorbed by the eraser polarizer.
+  var _blocked = false;
+  function sampleLanding(slitY) {
+    _blocked = false;
+    if (state.mode === "theory") {
+      if (!state.observe) return sampleFrom(invQ);
+      return slitY > 0 ? sampleFrom(invP) : sampleFrom(invM);
+    }
+    if (!state.tagging) return sampleFrom(invQ);
+    if (!state.eraser) return slitY > 0 ? sampleFrom(invP) : sampleFrom(invM);
+    if (Math.random() < 0.5) {
+      _blocked = true; // absorbed; sample the path it would have taken
+      return slitY > 0 ? sampleFrom(invP) : sampleFrom(invM);
+    }
+    return sampleFrom(invE);
+  }
+  function passesSlit(y) {
+    return Math.abs(Math.abs(y) - state.slitSep / 2) < state.slitWidth / 2;
+  }
+
+  // ---------- particle pool (structure of arrays) ----------
+  var stage = new Uint8Array(MAX);   // 0 free, 1 to-barrier, 2 to-screen, 3 absorbed flash
+  var x0 = new Float32Array(MAX), y0 = new Float32Array(MAX);
+  var x1 = new Float32Array(MAX), y1 = new Float32Array(MAX);
+  var tt = new Float32Array(MAX);    // 0..1 progress along segment
+  var tv = new Float32Array(MAX);    // dt/dt progress rate
+  var phase = new Float32Array(MAX);
+  var ttl = new Float32Array(MAX);
+  var tag = new Uint8Array(MAX);     // 0 none, 1 upper slit, 2 lower slit
+  var blocked = new Uint8Array(MAX); // 1 = will be absorbed by eraser polarizer
+  var free = [];
+  for (var fi = MAX - 1; fi >= 0; fi--) free.push(fi);
+
+  var emitAcc = 0, detected = 0, blockedCount = 0;
+
+  // Vertex staging arrays: [x, y, alpha] per point
+  var aliveArr = new Float32Array(MAX * 3);
+  var tagPArr = new Float32Array(MAX * 3);
+  var tagMArr = new Float32Array(MAX * 3);
+  var absArr = new Float32Array(MAX * 3);
+  var hitArr = new Float32Array(2048 * 3);
+  var filmQueue = new Float32Array(8192 * 3);
+  var filmCount = 0;
+
+  var HIST_BINS = 240;
+  var hist = new Float32Array(HIST_BINS);
+  var recentHits = [];
+
+  function spawnOne() {
+    if (free.length === 0) return;
+    var i = free.pop();
+    var ex = EMIT_X + (Math.random() - 0.5) * 0.02;
+    var ey = (Math.random() - 0.5) * 0.03;
+    var ty;
+    if (Math.random() < 0.78) {
+      var s = Math.random() < 0.5 ? 1 : -1;
+      ty = s * state.slitSep / 2 + (Math.random() - 0.5) * state.slitWidth * 1.7;
+    } else {
+      ty = (Math.random() - 0.5) * 1.1;
+    }
+    x0[i] = ex; y0[i] = ey; x1[i] = BARRIER_X; y1[i] = ty;
+    tt[i] = 0;
+    tv[i] = SPEED / Math.hypot(BARRIER_X - ex, ty - ey);
+    phase[i] = Math.random() * Math.PI * 2;
+    tag[i] = 0;
+    blocked[i] = 0;
+    stage[i] = 1;
+  }
+
+  function recordHit(y) {
+    detected++;
+    var b = ((y + SH) / (2 * SH) * HIST_BINS) | 0;
+    if (b >= 0 && b < HIST_BINS) hist[b]++;
+    if (recentHits.length < 2000) recentHits.push({ y: y, age: 0 });
+    if (filmCount < 8192) {
+      var k = filmCount * 3;
+      filmQueue[k] = 0.06 + Math.random() * 0.88;      // u across film width
+      filmQueue[k + 1] = (y / SH + 1) * 0.5;           // v along film height
+      filmQueue[k + 2] = 1;
+      filmCount++;
+    }
+  }
+
+  function update(dt) {
+    emitAcc += state.rate * dt;
+    var n = Math.floor(emitAcc);
+    emitAcc -= n;
+    while (n-- > 0) spawnOne();
+
+    for (var i = 0; i < MAX; i++) {
+      var st = stage[i];
+      if (st === 0) continue;
+      if (st === 3) {
+        ttl[i] -= dt;
+        if (ttl[i] <= 0) { stage[i] = 0; free.push(i); }
+        continue;
+      }
+      tt[i] += tv[i] * dt;
+      if (tt[i] < 1) continue;
+      if (st === 1) {
+        var ty = y1[i];
+        if (passesSlit(ty)) {
+          var landY = sampleLanding(ty);
+          tag[i] = ty > 0 ? 1 : 2;
+          x0[i] = BARRIER_X; y0[i] = ty;
+          if (_blocked) {
+            // stops where its straight path crosses the polarizer plane
+            blocked[i] = 1;
+            x1[i] = POL_X;
+            y1[i] = ty + (landY - ty) * (POL_X - BARRIER_X) / (SCREEN_X - BARRIER_X);
+          } else {
+            blocked[i] = 0;
+            x1[i] = SCREEN_X; y1[i] = landY;
+          }
+          tt[i] = 0;
+          tv[i] = SPEED / Math.hypot(x1[i] - x0[i], y1[i] - y0[i]);
+          stage[i] = 2;
+        } else {
+          stage[i] = 3;
+          tt[i] = 1;
+          ttl[i] = 0.28;
+        }
+      } else if (blocked[i]) { // absorbed by the eraser polarizer
+        blockedCount++;
+        stage[i] = 3;
+        tt[i] = 1;
+        ttl[i] = 0.25;
+      } else { // st === 2: arrived at screen
+        recordHit(y1[i]);
+        stage[i] = 0;
+        free.push(i);
+      }
+    }
+
+    for (var h = recentHits.length - 1; h >= 0; h--) {
+      recentHits[h].age += dt;
+      if (recentHits[h].age > 0.45) recentHits.splice(h, 1);
+    }
+  }
+
+  // ---------- layout ----------
+  var W = 0, H = 0, dpr = 1;
+  var simRect = { x: 0, y: 0, w: 0, h: 0 };
+  var filmRect = { x: 0, y: 0, w: 0, h: 0 };
+
+  function layout() {
+    dpr = Math.min(window.devicePixelRatio || 1, 2);
+    W = window.innerWidth; H = window.innerHeight;
+    glCanvas.width = Math.round(W * dpr); glCanvas.height = Math.round(H * dpr);
+    ovCanvas.width = Math.round(W * dpr); ovCanvas.height = Math.round(H * dpr);
+    octx.setTransform(dpr, 0, 0, dpr, 0, 0);
+
+    var fw = Math.max(120, Math.min(250, W * 0.16));
+    simRect.x = 0; simRect.y = 0; simRect.w = W - fw - 34; simRect.h = H;
+    filmRect.w = fw;
+    filmRect.x = W - fw - 14;
+    filmRect.y = simRect.y + (1 - SH) / 2 * simRect.h;
+    filmRect.h = SH * simRect.h;
+  }
+
+  function w2px(wx) { return simRect.x + (wx + 1) / 2 * simRect.w; }
+  function w2py(wy) { return simRect.y + (1 - wy) / 2 * simRect.h; }
+
+  // clip = world * scale + offset, for world coords in [-1,1] mapped to a pixel rect
+  function setWorldTransform(rect) {
+    gl.uniform2f(pp.u_scale, rect.w / W, rect.h / H);
+    gl.uniform2f(pp.u_offset, (2 * rect.x + rect.w) / W - 1, 1 - (2 * rect.y + rect.h) / H);
+  }
+
+  // ---------- rendering ----------
+  function drawPoints(arr, count, size, r, g, b) {
+    if (count === 0) return;
+    gl.bindBuffer(gl.ARRAY_BUFFER, pointBuf);
+    gl.bufferData(gl.ARRAY_BUFFER, arr.subarray(0, count * 3), gl.DYNAMIC_DRAW);
+    gl.enableVertexAttribArray(pp.a_data);
+    gl.vertexAttribPointer(pp.a_data, 3, gl.FLOAT, false, 0, 0);
+    gl.uniform1f(pp.u_size, size);
+    gl.uniform3f(pp.u_color, r, g, b);
+    gl.drawArrays(gl.POINTS, 0, count);
+  }
+
+  function render(now) {
+    // 1) accumulate new hits onto the film texture
+    gl.useProgram(pointProg);
+    if (filmCount > 0) {
+      gl.bindFramebuffer(gl.FRAMEBUFFER, filmFbo);
+      gl.viewport(0, 0, FILM_W, FILM_H);
+      gl.enable(gl.BLEND);
+      gl.blendFunc(gl.ONE, gl.ONE);
+      gl.uniform2f(pp.u_scale, 2, 2);
+      gl.uniform2f(pp.u_offset, -1, -1);
+      drawPoints(filmQueue, filmCount, 3, 0.35, 0.35, 0.35);
+      filmCount = 0;
+      gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+    }
+
+    gl.viewport(0, 0, glCanvas.width, glCanvas.height);
+    gl.clearColor(0, 0, 0, 0);
+    gl.clear(gl.COLOR_BUFFER_BIT);
+
+    // 2) detector film panel (opaque)
+    gl.disable(gl.BLEND);
+    gl.useProgram(texProg);
+    gl.bindBuffer(gl.ARRAY_BUFFER, quadBuf);
+    gl.enableVertexAttribArray(tp.a_pos);
+    gl.vertexAttribPointer(tp.a_pos, 2, gl.FLOAT, false, 0, 0);
+    gl.uniform2f(tp.u_scale, 2 * filmRect.w / W, 2 * filmRect.h / H);
+    gl.uniform2f(tp.u_offset, 2 * filmRect.x / W - 1, 1 - 2 * (filmRect.y + filmRect.h) / H);
+    gl.activeTexture(gl.TEXTURE0);
+    gl.bindTexture(gl.TEXTURE_2D, filmTex);
+    gl.uniform1i(tp.u_tex, 0);
+    if (interferenceOn()) gl.uniform3f(tp.u_tint, 0.25, 0.85, 1.0);
+    else gl.uniform3f(tp.u_tint, 1.0, 0.6, 0.35);
+    gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
+
+    // 3) particles (additive glow)
+    gl.enable(gl.BLEND);
+    gl.blendFunc(gl.ONE, gl.ONE);
+    gl.useProgram(pointProg);
+    setWorldTransform(simRect);
+
+    var nAlive = 0, nAbs = 0, nHit = 0, nTagP = 0, nTagM = 0;
+    var wigK = 2 * Math.PI / (state.wavelength * 6);
+    var interf = interferenceOn();
+    var tagged = state.mode === "practical" && state.tagging;
+    for (var i = 0; i < MAX; i++) {
+      var st = stage[i];
+      if (st === 0) continue;
+      var k;
+      if (st === 3) {
+        k = nAbs * 3;
+        absArr[k] = x1[i];
+        absArr[k + 1] = y1[i];
+        absArr[k + 2] = (ttl[i] / 0.28) * 0.9;
+        nAbs++;
+        continue;
+      }
+      var t = Math.min(tt[i], 1);
+      var px = x0[i] + (x1[i] - x0[i]) * t;
+      var py = y0[i] + (y1[i] - y0[i]) * t;
+      var alpha = 0.55;
+      if (st === 2) {
+        alpha = 0.7 + 0.2 * Math.sin(phase[i] * 3 + now * 11);
+        if (interf && !blocked[i]) {
+          var dist = t * SPEED / tv[i];
+          py += 0.008 * Math.sin(dist * wigK + phase[i]) * Math.sin(Math.PI * t);
+        }
+      }
+      // tagged photons carry their slit's color until the eraser strips it
+      if (st === 2 && tagged && !(state.eraser && !blocked[i] && px > POL_X)) {
+        if (tag[i] === 1) {
+          k = nTagP * 3;
+          tagPArr[k] = px; tagPArr[k + 1] = py; tagPArr[k + 2] = alpha;
+          nTagP++;
+        } else {
+          k = nTagM * 3;
+          tagMArr[k] = px; tagMArr[k + 1] = py; tagMArr[k + 2] = alpha;
+          nTagM++;
+        }
+      } else {
+        k = nAlive * 3;
+        aliveArr[k] = px;
+        aliveArr[k + 1] = py;
+        aliveArr[k + 2] = alpha;
+        nAlive++;
+      }
+    }
+    for (var h = 0; h < recentHits.length && nHit < 2048; h++) {
+      var rh = recentHits[h];
+      var kk = nHit * 3;
+      hitArr[kk] = SCREEN_X;
+      hitArr[kk + 1] = rh.y;
+      hitArr[kk + 2] = (1 - rh.age / 0.45) * 0.95;
+      nHit++;
+    }
+
+    if (state.mode === "theory" && state.observe)
+      drawPoints(aliveArr, nAlive, 6.5 * dpr, 1.0, 0.62, 0.30);
+    else drawPoints(aliveArr, nAlive, 6.5 * dpr, 0.30, 0.85, 1.0);
+    drawPoints(tagPArr, nTagP, 6.5 * dpr, 1.0, 0.43, 0.71); // upper slit: pink
+    drawPoints(tagMArr, nTagM, 6.5 * dpr, 0.43, 1.0, 0.55); // lower slit: green
+    drawPoints(absArr, nAbs, 9 * dpr, 1.0, 0.45, 0.25);
+    drawPoints(hitArr, nHit, 15 * dpr, 0.9, 1.0, 1.0);
+  }
+
+  // ---------- 2D overlay: apparatus, curves, labels ----------
+  function drawOverlay(now) {
+    octx.clearRect(0, 0, W, H);
+    var bx = w2px(BARRIER_X), sx = w2px(SCREEN_X);
+    var d2 = state.slitSep / 2, a2 = state.slitWidth / 2;
+
+    // emitter
+    var exp_ = w2px(EMIT_X), eyp = w2py(0);
+    octx.fillStyle = "#26314a";
+    octx.strokeStyle = "rgba(130,180,255,0.35)";
+    octx.lineWidth = 1;
+    octx.beginPath();
+    if (octx.roundRect) octx.roundRect(exp_ - 20, eyp - 13, 30, 26, 5);
+    else octx.rect(exp_ - 20, eyp - 13, 30, 26);
+    octx.fill(); octx.stroke();
+    var pulse = 0.55 + 0.45 * Math.sin(now * 6);
+    octx.fillStyle = "rgba(120,220,255," + (0.35 + 0.5 * pulse) + ")";
+    octx.beginPath();
+    octx.arc(exp_ + 13, eyp, 3.5 + 1.5 * pulse, 0, 6.2832);
+    octx.fill();
+
+    // barrier with two slit gaps
+    octx.fillStyle = "#2b3854";
+    var bw = 9;
+    function bar(yTop, yBot) { // world coords, yTop > yBot
+      var p1 = w2py(yTop), p2 = w2py(yBot);
+      octx.fillRect(bx - bw / 2, p1, bw, p2 - p1);
+    }
+    bar(BARRIER_HH, d2 + a2);
+    bar(d2 - a2, -(d2 - a2));
+    bar(-(d2 + a2), -BARRIER_HH);
+
+    // which-path detectors (theory mode)
+    if (state.mode === "theory" && state.observe) {
+      octx.fillStyle = "rgba(255,80,60,0.9)";
+      [d2, -d2].forEach(function (sy) {
+        var pyy = w2py(sy);
+        octx.beginPath();
+        octx.arc(bx + 12, pyy, 3.2, 0, 6.2832);
+        octx.fill();
+        octx.strokeStyle = "rgba(255,80,60," + (0.25 + 0.25 * Math.sin(now * 8)) + ")";
+        octx.lineWidth = 1.5;
+        octx.beginPath();
+        octx.arc(bx + 12, pyy, 7, 0, 6.2832);
+        octx.stroke();
+      });
+      octx.fillStyle = "rgba(255,120,95,0.85)";
+      octx.font = "600 11px -apple-system, sans-serif";
+      octx.textAlign = "center";
+      octx.fillText("which-path detectors ON", bx, w2py(BARRIER_HH) - 24);
+    }
+
+    // polarization tag plates + eraser polarizer (practical mode)
+    if (state.mode === "practical" && state.tagging) {
+      var pad = 0.014;
+      var plates = [
+        { y: d2, c: "rgba(255,110,180,0.85)" },
+        { y: -d2, c: "rgba(110,255,140,0.85)" }
+      ];
+      for (var pi = 0; pi < plates.length; pi++) {
+        var pt = w2py(plates[pi].y + a2 + pad);
+        var pb = w2py(plates[pi].y - a2 - pad);
+        octx.fillStyle = plates[pi].c;
+        octx.fillRect(bx + 7, pt, 6, pb - pt);
+      }
+      octx.fillStyle = "rgba(255,160,205,0.9)";
+      octx.font = "600 11px -apple-system, sans-serif";
+      octx.textAlign = "center";
+      octx.fillText("polarization tags", bx + 10, w2py(BARRIER_HH) - 24);
+
+      if (state.eraser) {
+        var pxp = w2px(POL_X);
+        var pTop = w2py(SH * 0.98), pBot = w2py(-SH * 0.98);
+        octx.fillStyle = "rgba(150,200,255,0.09)";
+        octx.fillRect(pxp - 5, pTop, 10, pBot - pTop);
+        octx.strokeStyle = "rgba(150,200,255,0.4)";
+        octx.lineWidth = 1;
+        octx.strokeRect(pxp - 5, pTop, 10, pBot - pTop);
+        // angle dial above the strip
+        var thd = state.eraserAngle * Math.PI / 180, rr = 9;
+        var dcy = pTop - 16;
+        octx.beginPath();
+        octx.arc(pxp, dcy, rr, 0, 6.2832);
+        octx.stroke();
+        octx.strokeStyle = "rgba(210,235,255,0.9)";
+        octx.lineWidth = 1.5;
+        octx.beginPath();
+        octx.moveTo(pxp - Math.sin(thd) * rr, dcy - Math.cos(thd) * rr);
+        octx.lineTo(pxp + Math.sin(thd) * rr, dcy + Math.cos(thd) * rr);
+        octx.stroke();
+        octx.fillStyle = "rgba(170,205,255,0.85)";
+        octx.font = "600 11px -apple-system, sans-serif";
+        octx.textAlign = "center";
+        octx.fillText("eraser polarizer " + state.eraserAngle + "°", pxp, pBot + 18);
+      }
+    }
+
+    // detection screen line
+    octx.strokeStyle = "rgba(130,200,255,0.3)";
+    octx.lineWidth = 3;
+    octx.beginPath();
+    octx.moveTo(sx, w2py(SH));
+    octx.lineTo(sx, w2py(-SH));
+    octx.stroke();
+
+    // histogram of detected hits (grows leftward from the screen)
+    var histW = Math.min(simRect.w * 0.2, 170);
+    var vmax = 0, b;
+    for (b = 0; b < HIST_BINS; b++) if (hist[b] > vmax) vmax = hist[b];
+    if (vmax > 3) {
+      octx.beginPath();
+      octx.moveTo(sx, w2py(-SH));
+      for (b = 0; b < HIST_BINS; b++) {
+        var v = (hist[Math.max(0, b - 1)] + 2 * hist[b] + hist[Math.min(HIST_BINS - 1, b + 1)]) / 4;
+        var yy = -SH + (b + 0.5) / HIST_BINS * 2 * SH;
+        octx.lineTo(sx - (v / vmax) * histW, w2py(yy));
+      }
+      octx.lineTo(sx, w2py(SH));
+      octx.closePath();
+      octx.fillStyle = "rgba(85,200,255,0.16)";
+      octx.fill();
+      octx.strokeStyle = "rgba(110,215,255,0.65)";
+      octx.lineWidth = 1.5;
+      octx.stroke();
+    }
+
+    // theoretical curve
+    if (state.showCurve) {
+      var pdf;
+      if (state.mode === "theory") pdf = state.observe ? pdfO : pdfQ;
+      else if (!state.tagging) pdf = pdfQ;
+      else pdf = state.eraser ? pdfE : pdfO;
+      var pmax = 0, j;
+      for (j = 0; j < NN; j++) if (pdf[j] > pmax) pmax = pdf[j];
+      octx.beginPath();
+      for (j = 0; j < NN; j += 4) {
+        var yw = -SH + (j + 0.5) * (2 * SH / NN);
+        var xx = sx - (pdf[j] / pmax) * histW;
+        if (j === 0) octx.moveTo(xx, w2py(yw));
+        else octx.lineTo(xx, w2py(yw));
+      }
+      octx.strokeStyle = "rgba(255,190,90,0.75)";
+      octx.lineWidth = 1.5;
+      octx.setLineDash([5, 4]);
+      octx.stroke();
+      octx.setLineDash([]);
+    }
+
+    // film panel frame + labels
+    octx.strokeStyle = "rgba(130,180,255,0.28)";
+    octx.lineWidth = 1;
+    octx.strokeRect(filmRect.x - 0.5, filmRect.y - 0.5, filmRect.w + 1, filmRect.h + 1);
+
+    octx.fillStyle = "rgba(160,190,230,0.6)";
+    octx.font = "11px -apple-system, sans-serif";
+    octx.textAlign = "center";
+    octx.fillText("source", exp_, eyp + 32);
+    octx.fillText("double slit", bx, w2py(-BARRIER_HH) + 18);
+    octx.fillText("screen", sx, w2py(-SH) + 18);
+    octx.fillText("detector face (head-on)", filmRect.x + filmRect.w / 2, filmRect.y - 10);
+    if (state.showCurve) {
+      octx.fillStyle = "rgba(255,190,90,0.7)";
+      octx.textAlign = "right";
+      octx.fillText("· · theory", sx - 8, w2py(SH) - 8);
+    }
+  }
+
+  // ---------- reset / UI ----------
+  function resetDetector() {
+    hist.fill(0);
+    detected = 0;
+    blockedCount = 0;
+    recentHits.length = 0;
+    filmCount = 0;
+    gl.bindFramebuffer(gl.FRAMEBUFFER, filmFbo);
+    gl.clearColor(0, 0, 0, 1);
+    gl.clear(gl.COLOR_BUFFER_BIT);
+    gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+  }
+
+  var $ = function (id) { return document.getElementById(id); };
+  var countEl = $("count"), blockedEl = $("blockedNum");
+
+  function bindSlider(id, valId, key, fmt, resets) {
+    var el = $(id), val = $(valId);
+    function show() { val.textContent = fmt(state[key]); }
+    el.addEventListener("input", function () {
+      state[key] = parseFloat(el.value);
+      show();
+      if (resets) { rebuildTables(); resetDetector(); }
+    });
+    show();
+  }
+  bindSlider("rate", "rateVal", "rate", function (v) { return v + "/s"; }, false);
+  bindSlider("lambda", "lambdaVal", "wavelength", function (v) { return Math.round(v * 1000); }, true);
+  bindSlider("sep", "sepVal", "slitSep", function (v) { return Math.round(v * 1000); }, true);
+  bindSlider("width", "widthVal", "slitWidth", function (v) { return Math.round(v * 1000); }, true);
+  bindSlider("angle", "angleVal", "eraserAngle", function (v) { return v + "°"; }, true);
+
+  function applyModeUI() {
+    var theory = state.mode === "theory";
+    $("modeTheory").classList.toggle("active", theory);
+    $("modePractical").classList.toggle("active", !theory);
+    $("theoryCtrls").style.display = theory ? "" : "none";
+    $("practicalCtrls").style.display = theory ? "none" : "";
+    $("eraserCtls").classList.toggle("disabled", !state.tagging);
+    $("angleRow").style.display = (state.tagging && state.eraser) ? "" : "none";
+    $("blockedStat").style.display = (!theory && state.tagging && state.eraser) ? "" : "none";
+    $("modeBlurb").textContent = theory
+      ? "An idealized version: one switch decides whether the universe keeps a record of each photon's slit."
+      : "How it's really done with light: filters tag each slit's photons by polarization — and a second filter can erase the tag.";
+  }
+  $("modeTheory").addEventListener("click", function () {
+    state.mode = "theory";
+    applyModeUI();
+    resetDetector();
+  });
+  $("modePractical").addEventListener("click", function () {
+    state.mode = "practical";
+    applyModeUI();
+    resetDetector();
+  });
+  $("observe").addEventListener("change", function () {
+    state.observe = this.checked;
+    resetDetector();
+  });
+  $("tagging").addEventListener("change", function () {
+    state.tagging = this.checked;
+    applyModeUI();
+    resetDetector();
+  });
+  $("eraser").addEventListener("change", function () {
+    state.eraser = this.checked;
+    applyModeUI();
+    resetDetector();
+  });
+  applyModeUI();
+  $("curve").addEventListener("change", function () {
+    state.showCurve = this.checked;
+  });
+  $("pauseBtn").addEventListener("click", function () {
+    state.paused = !state.paused;
+    this.textContent = state.paused ? "Resume" : "Pause";
+  });
+  $("resetBtn").addEventListener("click", resetDetector);
+
+  // ---------- main loop ----------
+  rebuildTables();
+  layout();
+  window.addEventListener("resize", layout);
+
+  var last = performance.now() / 1000;
+  var frame = 0;
+  function tick() {
+    var now = performance.now() / 1000;
+    var dt = Math.min(now - last, 0.05);
+    last = now;
+    if (!state.paused) update(dt);
+    render(now);
+    drawOverlay(now);
+    if ((frame++ & 15) === 0) {
+      countEl.textContent = detected.toLocaleString();
+      blockedEl.textContent = blockedCount.toLocaleString();
+    }
+    requestAnimationFrame(tick);
+  }
+  requestAnimationFrame(tick);
+
+})();
+</script>
+</body>
+</html>
