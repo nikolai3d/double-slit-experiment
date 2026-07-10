@@ -60,10 +60,14 @@
   #stats b { color: #7fe0ff; font-weight: 650; }
 
   details { margin-top: 12px; border-top: 1px solid rgba(120,170,255,0.14); padding-top: 10px; }
+  #advanced { margin-top: 10px; padding-top: 8px; }
+  #advanced .row:first-of-type { margin-top: 10px; }
   summary { cursor: pointer; color: #a9bfe0; font-weight: 600; font-size: 12px; }
   details p { font-size: 12px; color: #93a9cb; margin: 8px 0 0; }
   details b { color: #cfe3ff; }
   details .formula { font-family: ui-monospace, Menlo, monospace; font-size: 11px; color: #7fe0ff; }
+  details a { color: #7fe0ff; text-decoration-color: rgba(127, 224, 255, 0.4); }
+  details a:hover { text-decoration-color: #7fe0ff; }
 
   #nogl {
     position: fixed; inset: 0; display: flex; align-items: center; justify-content: center;
@@ -111,10 +115,13 @@
     </div>
   </div>
 
-  <div class="row"><label>Rate</label><input type="range" id="rate" min="60" max="20000" step="20" value="1200"><span class="val" id="rateVal"></span></div>
-  <div class="row"><label>Wavelength λ</label><input type="range" id="lambda" min="0.008" max="0.045" step="0.001" value="0.02"><span class="val" id="lambdaVal"></span></div>
-  <div class="row"><label>Slit distance d</label><input type="range" id="sep" min="0.10" max="0.40" step="0.005" value="0.22"><span class="val" id="sepVal"></span></div>
-  <div class="row"><label>Slit width a</label><input type="range" id="width" min="0.02" max="0.09" step="0.002" value="0.05"><span class="val" id="widthVal"></span></div>
+  <div class="row"><label>Rate</label><input type="range" id="rate" min="60" max="50000" step="20" value="30000"><span class="val" id="rateVal"></span></div>
+  <details id="advanced">
+    <summary>Advanced</summary>
+    <div class="row"><label>Wavelength λ</label><input type="range" id="lambda" min="0.008" max="0.045" step="0.001" value="0.02"><span class="val" id="lambdaVal"></span></div>
+    <div class="row"><label>Slit distance d</label><input type="range" id="sep" min="0.10" max="0.40" step="0.005" value="0.22"><span class="val" id="sepVal"></span></div>
+    <div class="row"><label>Slit width a</label><input type="range" id="width" min="0.02" max="0.09" step="0.002" value="0.05"><span class="val" id="widthVal"></span></div>
+  </details>
 
   <label class="check"><input type="checkbox" id="curve" checked> Show theoretical curve</label>
 
@@ -145,14 +152,25 @@
     forced to act like it took one slit, and the stripes collapse into two
     ordinary overlapping heaps.</p>
     <p><b>Real-experiment mode.</b> How do you actually build such a
-    “detector”? With polarization — the direction a light wave wiggles. Put a
-    different filter on each slit: one twists its photons clockwise
+    “detector”? This is one of the possible real-world versions of the
+    experiment — it uses polarization, the direction a light wave wiggles.
+    Put a different filter on each slit: one twists its photons clockwise
     (<span style="color:#ff6eb4">pink</span> in the animation), the other
     counter-clockwise (<span style="color:#6eff8c">green</span>). The twist is
     a label riding on each photon that says which slit it came through. No
     person and no instrument ever reads the label — but merely because the
     label <em>exists</em>, the stripes vanish. This is a real tabletop
-    experiment done with lasers and standard optics parts.</p>
+    experiment done with lasers and standard optics parts — see
+    <a href="https://arxiv.org/abs/quant-ph/0106078" target="_blank" rel="noopener">Walborn
+    et&nbsp;al., “Double-slit quantum eraser” (Phys. Rev. A 65, 033818)</a>,
+    Scientific American’s
+    <a href="https://www.scientificamerican.com/article/a-do-it-yourself-quantum-eraser/" target="_blank" rel="noopener">“A
+    Do-It-Yourself Quantum Eraser”</a> by Hillmer &amp; Kwiat, and the
+    <a href="https://en.wikipedia.org/wiki/Quantum_eraser_experiment" target="_blank" rel="noopener">quantum
+    eraser experiment</a> overview on Wikipedia. Other real-world variants
+    exist too, e.g. with
+    <a href="https://en.wikipedia.org/wiki/Double-slit_experiment#Interference_from_individual_particles" target="_blank" rel="noopener">single
+    electrons</a> or even large molecules.</p>
     <p><b>The quantum eraser.</b> Now add one more filter just before the
     screen — one that forces every photon passing it into the very same
     polarization. The label is wiped out before landing, and the stripes come
@@ -177,7 +195,7 @@
   // ---------- state & constants ----------
   var state = {
     mode: "theory",        // "theory" | "practical"
-    rate: 1200,
+    rate: 30000,
     wavelength: 0.02,
     slitSep: 0.22,
     slitWidth: 0.05,
@@ -195,7 +213,7 @@
   var L = SCREEN_X - BARRIER_X;      // slit-to-screen distance
   var BARRIER_HH = 0.82;             // barrier half-height
   var SPEED = 1.15;                  // particle speed (world units / s)
-  var MAX = 40000;                   // particle pool size (~20k/s × ~1.6s flight time)
+  var MAX = 100000;                  // particle pool size (~50k/s × ~1.6s flight time, with headroom)
   var NN = 1024, INV = 2048;         // pdf resolution / inverse-cdf table size
   var FILM_W = 256, FILM_H = 1024;   // detector-film texture resolution
 
@@ -862,7 +880,7 @@
     $("blockedStat").style.display = (!theory && state.tagging && state.eraser) ? "" : "none";
     $("modeBlurb").textContent = theory
       ? "An idealized version: one switch decides whether the universe keeps a record of each photon's slit."
-      : "How it's really done with light: filters tag each slit's photons by polarization — and a second filter can erase the tag.";
+      : "One way it's actually done with light: filters tag each slit's photons by polarization — and a second filter can erase the tag.";
   }
   $("modeTheory").addEventListener("click", function () {
     state.mode = "theory";
