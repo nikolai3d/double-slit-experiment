@@ -897,7 +897,7 @@
     $("blockedStat").style.display = (!theory && state.tagging && state.eraser) ? "" : "none";
     $("modeBlurb").innerHTML = theory
       ? "An idealized version: one switch decides whether the universe keeps a record of each photon's slit."
-      : "One way it's actually done with light: filters tag each slit's photons by polarization — and a second filter can <a href=\"https://en.wikipedia.org/wiki/Quantum_eraser_experiment\" target=\"_blank\" rel=\"noopener\">erase the tag</a>.";
+      : "One way it's actually done with light: <a href=\"https://en.wikipedia.org/wiki/Double-slit_experiment\" target=\"_blank\" rel=\"noopener\">filters tag each slit's photons by polarization</a> — and a second filter can <a href=\"https://en.wikipedia.org/wiki/Quantum_eraser_experiment\" target=\"_blank\" rel=\"noopener\">erase the tag</a>.";
   }
   $("modeTheory").addEventListener("click", function () {
     state.mode = "theory";
