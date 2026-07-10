@@ -69,6 +69,24 @@
   #panel a { color: #7fe0ff; text-decoration-color: rgba(127, 224, 255, 0.4); }
   #panel a:hover { text-decoration-color: #7fe0ff; }
 
+  #modeTitle {
+    position: fixed; top: 16px; transform: translateX(-50%);
+    font-size: 26px; font-weight: 700; letter-spacing: .05em;
+    color: rgba(214, 232, 255, 0.9); white-space: nowrap;
+    text-shadow: 0 2px 14px rgba(0, 0, 0, 0.65);
+    pointer-events: none; z-index: 4;
+  }
+  .simToggle {
+    position: fixed; bottom: 14px; transform: translateX(-50%);
+    flex: none; padding: 6px 11px; border-radius: 8px; white-space: nowrap;
+    font: 700 12px/1 inherit; letter-spacing: .02em; z-index: 4;
+  }
+  .simToggle.on { background: rgba(24, 150, 74, 0.9); border-color: rgba(90, 230, 150, 0.7); color: #eafff2; }
+  .simToggle.on:hover { background: rgba(30, 175, 88, 0.95); }
+  .simToggle.off { background: rgba(178, 45, 40, 0.9); border-color: rgba(255, 120, 105, 0.7); color: #ffedeb; }
+  .simToggle.off:hover { background: rgba(205, 55, 48, 0.95); }
+  .simToggle:disabled { opacity: 0.35; cursor: default; }
+
   #tip {
     position: fixed; display: none; max-width: 280px; z-index: 10;
     background: rgba(10, 16, 28, 0.94);
@@ -201,6 +219,10 @@
   </details>
 </div>
 
+<div id="modeTitle"></div>
+<button id="btnObserve" class="simToggle"></button>
+<button id="btnTagging" class="simToggle"></button>
+<button id="btnEraser" class="simToggle"></button>
 <div id="tip"></div>
 <div id="nogl" hidden>WebGL is not available in this browser, so the simulation cannot run.</div>
 
@@ -752,12 +774,12 @@
         var pt = w2py(plates[pi].y + a2 + pad);
         var pb = w2py(plates[pi].y - a2 - pad);
         octx.fillStyle = plates[pi].c;
-        octx.fillRect(bx + 7, pt, 6, pb - pt);
+        octx.fillRect(bx + 18, pt, 6, pb - pt);
       }
       octx.fillStyle = "rgba(255,160,205,0.9)";
       octx.font = "600 11px -apple-system, sans-serif";
       octx.textAlign = "center";
-      octx.fillText("polarization tags", bx + 10, w2py(BARRIER_HH) - 24);
+      octx.fillText("polarization tags", bx + 21, w2py(BARRIER_HH) - 24);
 
       if (state.eraser) {
         var pxp = w2px(POL_X);
@@ -888,6 +910,36 @@
   bindSlider("width", "widthVal", "slitWidth", function (v) { return Math.round(v * 1000); }, true);
   bindSlider("angle", "angleVal", "eraserAngle", function (v) { return v + "°"; }, true);
 
+  // Large mode title + on-apparatus toggle buttons, synced with panel checkboxes
+  var TAG_PX = 21; // tag plates' pixel offset right of the barrier plane
+  function positionHud() {
+    $("modeTitle").style.left = (simRect.x + simRect.w / 2) + "px";
+    $("btnObserve").style.left = w2px(BARRIER_X) + "px";
+    $("btnTagging").style.left = (w2px(BARRIER_X) + TAG_PX) + "px";
+    $("btnEraser").style.left = w2px(POL_X) + "px";
+  }
+  function setToggle(id, label, on) {
+    var btn = $(id);
+    btn.textContent = label + ": " + (on ? "ON" : "OFF");
+    btn.classList.toggle("on", on);
+    btn.classList.toggle("off", !on);
+  }
+  function syncHud() {
+    var theory = state.mode === "theory";
+    $("modeTitle").textContent = theory ? "Theoretical Mode" : "Real Experiment Mode";
+    $("btnObserve").style.display = theory ? "" : "none";
+    $("btnTagging").style.display = theory ? "none" : "";
+    $("btnEraser").style.display = theory ? "none" : "";
+    setToggle("btnObserve", "Which-path detector", state.observe);
+    setToggle("btnTagging", "Polarization tags", state.tagging);
+    setToggle("btnEraser", "Quantum eraser", state.eraser);
+    $("btnEraser").disabled = !state.tagging;
+    positionHud();
+  }
+  $("btnObserve").addEventListener("click", function () { $("observe").click(); });
+  $("btnTagging").addEventListener("click", function () { $("tagging").click(); });
+  $("btnEraser").addEventListener("click", function () { $("eraser").click(); });
+
   function applyModeUI() {
     var theory = state.mode === "theory";
     $("modeTheory").classList.toggle("active", theory);
@@ -901,6 +953,7 @@
     $("modeBlurb").innerHTML = theory
       ? "An idealized version: one switch decides whether the universe keeps a record of each photon's slit."
       : "One way it's actually done with light: <a href=\"https://en.wikipedia.org/wiki/Double-slit_experiment\" target=\"_blank\" rel=\"noopener\">filters tag each slit's photons by polarization</a> — and a second filter can <a href=\"https://en.wikipedia.org/wiki/Quantum_eraser_experiment\" target=\"_blank\" rel=\"noopener\">erase the tag</a>.";
+    syncHud();
   }
   $("modeTheory").addEventListener("click", function () {
     state.mode = "theory";
@@ -914,6 +967,7 @@
   });
   $("observe").addEventListener("change", function () {
     state.observe = this.checked;
+    syncHud();
     resetDetector();
   });
   $("tagging").addEventListener("change", function () {
@@ -1013,7 +1067,7 @@
     if (state.mode === "practical" && state.tagging && state.eraser &&
         Math.abs(mx - w2px(POL_X)) < 14 && my > yTop - 30 && my < yBot) return "eraser";
     // polarization tag plates (just right of the barrier, around each slit)
-    if (state.mode === "practical" && state.tagging && mx > bx + 3 && mx < bx + 19) {
+    if (state.mode === "practical" && state.tagging && mx > bx + 14 && mx < bx + 30) {
       var d2 = state.slitSep / 2, a2 = state.slitWidth / 2 + 0.014;
       if ((my > w2py(d2 + a2) - 6 && my < w2py(d2 - a2) + 6) ||
           (my > w2py(-d2 + a2) - 6 && my < w2py(-d2 - a2) + 6)) return "tags";
@@ -1047,7 +1101,8 @@
   // ---------- main loop ----------
   rebuildTables();
   layout();
-  window.addEventListener("resize", layout);
+  window.addEventListener("resize", function () { layout(); positionHud(); });
+  positionHud();
 
   var last = performance.now() / 1000;
   var frame = 0;
