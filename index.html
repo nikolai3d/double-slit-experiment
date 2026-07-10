@@ -69,6 +69,18 @@
   #panel a { color: #7fe0ff; text-decoration-color: rgba(127, 224, 255, 0.4); }
   #panel a:hover { text-decoration-color: #7fe0ff; }
 
+  #tip {
+    position: fixed; display: none; max-width: 280px; z-index: 10;
+    background: rgba(10, 16, 28, 0.94);
+    border: 1px solid rgba(120, 170, 255, 0.35);
+    border-radius: 9px; padding: 9px 11px;
+    font-size: 12px; line-height: 1.45; color: #c3d7f5;
+    pointer-events: none;
+    backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px);
+    box-shadow: 0 4px 18px rgba(0, 0, 0, 0.45);
+  }
+  #tip b { color: #eaf3ff; }
+
   #nogl {
     position: fixed; inset: 0; display: flex; align-items: center; justify-content: center;
     text-align: center; padding: 40px; font-size: 15px; color: #cfe3ff;
@@ -189,6 +201,7 @@
   </details>
 </div>
 
+<div id="tip"></div>
 <div id="nogl" hidden>WebGL is not available in this browser, so the simulation cannot run.</div>
 
 <script>
@@ -923,6 +936,110 @@
     this.textContent = state.paused ? "Resume" : "Pause";
   });
   $("resetBtn").addEventListener("click", resetDetector);
+
+  // ---------- hover explanations ----------
+  var tipEl = $("tip");
+
+  function detectorTipHTML() {
+    var base = "<b>Detector.</b> Every photon arrives as one tiny dot; the " +
+      "pattern is just many landings added up. ";
+    if (state.mode === "theory") {
+      if (state.observe) return base +
+        "The which-path detector is ON, so the universe holds a record of " +
+        "each photon’s slit. That record forces every photon to behave " +
+        "as if it took a single slit: the stripes are gone, leaving two " +
+        "overlapping single-slit heaps.";
+      return base +
+        "Nothing records which slit each photon used, so its wave passes " +
+        "through both slits and interferes with itself — bright and " +
+        "dark stripes build up, even though photons arrive one at a time.";
+    }
+    if (!state.tagging) return base +
+      "The slits are untouched — no record of a photon’s path " +
+      "exists anywhere — so each photon interferes with itself and " +
+      "stripes build up, one dot at a time.";
+    if (!state.eraser) return base +
+      "The polarization tags write a which-slit label onto every photon. " +
+      "Nothing ever reads the labels, but merely because they exist, the " +
+      "interference is destroyed: you see two overlapping heaps with no " +
+      "stripes.";
+    return base +
+      "The eraser polarizer wipes the which-slit label from the photons " +
+      "that pass it, so their stripes come back — shifted by the " +
+      "eraser angle (now " + state.eraserAngle + "°). The half it " +
+      "absorbs would have drawn exactly the opposite stripes; together the " +
+      "two halves would blur back into no stripes at all.";
+  }
+
+  function tipHTMLFor(region) {
+    switch (region) {
+      case "source": return "<b>Photon source.</b> Fires photons — " +
+        "single particles of light — toward the barrier, one at a " +
+        "time (the Rate slider sets how many per second). Each photon " +
+        "flies alone, so any interference must be the photon with itself.";
+      case "slit": return "<b>Double slit.</b> Two narrow openings in an " +
+        "otherwise solid wall. A photon either hits the wall (orange " +
+        "flash) or gets through — and as long as nothing records " +
+        "which opening it used, its wave squeezes through <em>both</em>, " +
+        "spreads out, and the two ripples overlap on the far side.";
+      case "tags": return "<b>Polarization tags.</b> A different filter " +
+        "sits on each slit: one twists its photons’ polarization one " +
+        "way (pink), the other the opposite way (green). The twist is a " +
+        "which-slit label written onto every photon — and writing " +
+        "that record is enough to kill the stripes, even though nothing " +
+        "ever reads it.";
+      case "eraser": return "<b>Quantum eraser.</b> A polarizer set at " +
+        state.eraserAngle + "° (the Eraser angle slider). It forces " +
+        "every photon that passes into one and the same polarization, " +
+        "wiping out the which-slit label — and absorbs the other " +
+        "half. With the label erased, stripes return; rotating the eraser " +
+        "slides them sideways.";
+      case "detector": return detectorTipHTML();
+    }
+    return "";
+  }
+
+  function regionAt(mx, my) {
+    var bx = w2px(BARRIER_X), sx = w2px(SCREEN_X);
+    var yTop = w2py(SH), yBot = w2py(-SH);
+    // detector: film panel (head-on view) or the screen line
+    if (mx >= filmRect.x - 6 && mx <= filmRect.x + filmRect.w + 6 &&
+        my >= filmRect.y - 6 && my <= filmRect.y + filmRect.h + 6) return "detector";
+    if (Math.abs(mx - sx) < 14 && my > yTop && my < yBot) return "detector";
+    // eraser polarizer strip
+    if (state.mode === "practical" && state.tagging && state.eraser &&
+        Math.abs(mx - w2px(POL_X)) < 14 && my > yTop - 30 && my < yBot) return "eraser";
+    // polarization tag plates (just right of the barrier, around each slit)
+    if (state.mode === "practical" && state.tagging && mx > bx + 3 && mx < bx + 19) {
+      var d2 = state.slitSep / 2, a2 = state.slitWidth / 2 + 0.014;
+      if ((my > w2py(d2 + a2) - 6 && my < w2py(d2 - a2) + 6) ||
+          (my > w2py(-d2 + a2) - 6 && my < w2py(-d2 - a2) + 6)) return "tags";
+    }
+    // barrier with its slits
+    if (Math.abs(mx - bx) < 13 &&
+        my > w2py(BARRIER_HH) - 4 && my < w2py(-BARRIER_HH) + 4) return "slit";
+    // source (left-side center area)
+    if (Math.abs(mx - w2px(EMIT_X)) < 34 && Math.abs(my - w2py(0)) < 32) return "source";
+    return null;
+  }
+
+  function hideTip() { tipEl.style.display = "none"; }
+
+  document.addEventListener("mousemove", function (e) {
+    if (e.target !== glCanvas && e.target !== document.body &&
+        e.target !== document.documentElement) { hideTip(); return; }
+    var region = regionAt(e.clientX, e.clientY);
+    if (!region) { hideTip(); return; }
+    tipEl.innerHTML = tipHTMLFor(region);
+    tipEl.style.display = "block";
+    var tw = tipEl.offsetWidth, th = tipEl.offsetHeight;
+    var tx = e.clientX + 16, ty = e.clientY + 16;
+    if (tx + tw > W - 8) tx = e.clientX - tw - 12;
+    if (ty + th > H - 8) ty = e.clientY - th - 12;
+    tipEl.style.left = Math.max(8, tx) + "px";
+    tipEl.style.top = Math.max(8, ty) + "px";
+  });
+  document.addEventListener("mouseleave", hideTip);
 
   // ---------- main loop ----------
   rebuildTables();
