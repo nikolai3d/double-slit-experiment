@@ -879,6 +879,7 @@
     $("theoryCtrls").style.display = theory ? "" : "none";
     $("practicalCtrls").style.display = theory ? "none" : "";
     $("eraserCtls").classList.toggle("disabled", !state.tagging);
+    $("eraser").disabled = !state.tagging;
     $("angleRow").style.display = (!theory && state.tagging && state.eraser) ? "" : "none";
     $("blockedStat").style.display = (!theory && state.tagging && state.eraser) ? "" : "none";
     $("modeBlurb").innerHTML = theory
@@ -901,6 +902,10 @@
   });
   $("tagging").addEventListener("change", function () {
     state.tagging = this.checked;
+    if (!state.tagging) {
+      state.eraser = false;
+      $("eraser").checked = false;
+    }
     applyModeUI();
     resetDetector();
   });
