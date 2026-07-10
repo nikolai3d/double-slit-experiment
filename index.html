@@ -623,6 +623,7 @@
     setWorldTransform(simRect);
 
     var nAlive = 0, nAbs = 0, nHit = 0, nTagP = 0, nTagM = 0;
+    var wallPush = 20 / simRect.w; // ~10 CSS px in world units
     var wigK = 2 * Math.PI / (state.wavelength * 6);
     var interf = interferenceOn();
     var tagged = state.mode === "practical" && state.tagging;
@@ -632,9 +633,11 @@
       var k;
       if (st === 3) {
         k = nAbs * 3;
-        absArr[k] = x1[i];
+        // wall flashes sit ~10px in front of the barrier face, or the opaque
+        // barrier bar drawn on the overlay canvas above would cover them
+        absArr[k] = x1[i] - (blocked[i] ? 0 : wallPush);
         absArr[k + 1] = y1[i];
-        absArr[k + 2] = (ttl[i] / 0.28) * 0.9;
+        absArr[k + 2] = (ttl[i] / 0.28) * 0.4;
         nAbs++;
         continue;
       }
@@ -682,7 +685,7 @@
     else drawPoints(aliveArr, nAlive, 6.5 * dpr, 0.30, 0.85, 1.0);
     drawPoints(tagPArr, nTagP, 6.5 * dpr, 1.0, 0.43, 0.71); // upper slit: pink
     drawPoints(tagMArr, nTagM, 6.5 * dpr, 0.43, 1.0, 0.55); // lower slit: green
-    drawPoints(absArr, nAbs, 9 * dpr, 1.0, 0.45, 0.25);
+    drawPoints(absArr, nAbs, 11 * dpr, 1.0, 0.45, 0.25);
     drawPoints(hitArr, nHit, 15 * dpr, 0.9, 1.0, 1.0);
   }
 
