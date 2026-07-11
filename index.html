@@ -757,10 +757,6 @@
         octx.arc(bx + 12, pyy, 7, 0, 6.2832);
         octx.stroke();
       });
-      octx.fillStyle = "rgba(255,120,95,0.85)";
-      octx.font = "600 11px -apple-system, sans-serif";
-      octx.textAlign = "center";
-      octx.fillText("which-path detectors ON", bx, w2py(BARRIER_HH) - 24);
     }
 
     // polarization tag plates + eraser polarizer (practical mode)
@@ -776,10 +772,6 @@
         octx.fillStyle = plates[pi].c;
         octx.fillRect(bx + 18, pt, 6, pb - pt);
       }
-      octx.fillStyle = "rgba(255,160,205,0.9)";
-      octx.font = "600 11px -apple-system, sans-serif";
-      octx.textAlign = "center";
-      octx.fillText("polarization tags", bx + 21, w2py(BARRIER_HH) - 24);
 
       if (state.eraser) {
         var pxp = w2px(POL_X);
