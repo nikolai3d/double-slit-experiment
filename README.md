@@ -8,7 +8,7 @@ and watch the interference collapse into two single-slit diffraction humps.
 
 ## Features
 
-- WebGL point-sprite particle simulation (up to 24,000 particles in flight)
+- WebGL point-sprite particle simulation (pool of 100,000 particles in flight)
 - Dot-by-dot accumulation on a head-on "detector face" (framebuffer texture),
   reproducing the iconic build-up images from real electron experiments
 - Landing positions sampled from the exact Fraunhofer intensity
@@ -20,7 +20,8 @@ and watch the interference collapse into two single-slit diffraction humps.
   absorbs half the photons, restores the fringes, and shifts them as it
   rotates (anti-fringes at 90°)
 - Live histogram of hits with a dashed theoretical-curve overlay
-- Adjustable wavelength, slit separation, slit width, and emission rate
+- Adjustable wavelength, slit separation, slit width, emission rate, and
+  eraser angle
 - No dependencies, no build step — one `index.html`
 
 ## Run locally
