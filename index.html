@@ -23,7 +23,7 @@
     border-radius: 12px; padding: 16px 18px;
     backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px);
   }
-  #panel h1 { margin: 0; font-size: 17px; font-weight: 650; color: #eaf3ff; letter-spacing: .01em; }
+  #panel h1 { margin: 0; font-size: 17px; font-weight: 650; color: #eaf3ff; letter-spacing: .01em; text-align: center; }
   #panel .sub { margin: 2px 0 14px; font-size: 12px; color: #8fa8cc; }
 
   .modes { display: flex; gap: 6px; margin: 0 0 10px; }
@@ -98,6 +98,9 @@
     box-shadow: 0 4px 18px rgba(0, 0, 0, 0.45);
   }
   #tip b { color: #eaf3ff; }
+  #tip ul { margin: 6px 0 0; padding-left: 17px; }
+  #tip li { margin: 3px 0; }
+  #tip p { margin: 6px 0 0; }
 
   #nogl {
     position: fixed; inset: 0; display: flex; align-items: center; justify-content: center;
@@ -112,7 +115,7 @@
 <canvas id="overlay"></canvas>
 
 <div id="panel">
-  <h1>Double-slit experiment</h1>
+  <h1>Double-Slit Experiment</h1>
   <p class="sub">Quantum interference, one particle at a time</p>
 
   <div class="modes">
@@ -863,11 +866,24 @@
     octx.fillText("double slit", bx, w2py(-BARRIER_HH) + 18);
     octx.fillText("screen", sx, w2py(-SH) + 18);
     octx.fillText("detector face (head-on)", filmRect.x + filmRect.w / 2, filmRect.y - 10);
-    if (state.showCurve) {
-      octx.fillStyle = "rgba(255,190,90,0.7)";
-      octx.textAlign = "right";
-      octx.fillText("· · theory", sx - 8, w2py(SH) - 8);
+    // curve legend (right-aligned above the screen)
+    var lx = sx - 8, ly = w2py(SH) - 10;
+    octx.textAlign = "right";
+    octx.lineWidth = 1.5;
+    function legendLine(text, y, color, dashed) {
+      octx.fillStyle = color;
+      octx.fillText(text, lx, y);
+      var tw = octx.measureText(text).width;
+      octx.strokeStyle = color;
+      if (dashed) octx.setLineDash([5, 4]);
+      octx.beginPath();
+      octx.moveTo(lx - tw - 26, y - 3.5);
+      octx.lineTo(lx - tw - 8, y - 3.5);
+      octx.stroke();
+      octx.setLineDash([]);
     }
+    if (state.showCurve) legendLine("theoretical distribution", ly - 15, "rgba(255,190,90,0.85)", true);
+    legendLine("simulated distribution", ly, "rgba(110,215,255,0.9)", false);
   }
 
   // ---------- reset / UI ----------
@@ -990,8 +1006,9 @@
   var tipEl = $("tip");
 
   function detectorTipHTML() {
-    var base = "<b>Detector.</b> Every photon arrives as one tiny dot; the " +
-      "pattern is just many landings added up. ";
+    var base = "<b>Detector face (head-on).</b> The screen as the photons " +
+      "see it: every photon arrives as one tiny dot, and the pattern is " +
+      "just many landings added up. ";
     if (state.mode === "theory") {
       if (state.observe) return base +
         "The which-path detector is ON, so the universe holds a record of " +
@@ -1043,6 +1060,23 @@
         "wiping out the which-slit label — and absorbs the other " +
         "half. With the label erased, stripes return; rotating the eraser " +
         "slides them sideways.";
+      case "screen": return "<b>Detection screen &amp; curves.</b> The " +
+        "vertical line is the screen seen edge-on; each arriving photon " +
+        "makes a white flash where it lands. Two curves grow leftward " +
+        "from it:" +
+        "<ul>" +
+        "<li><span style=\"color:#ffbe5a\">Dashed orange — <em>theoretical " +
+        "distribution</em></span>: the probability the optics formula " +
+        "predicts for the current wavelength, slit distance, slit width, " +
+        "and filters.</li>" +
+        "<li><span style=\"color:#6ed7ff\">Solid cyan — <em>simulated " +
+        "distribution</em></span>: where the photons of this run have " +
+        "actually landed.</li>" +
+        "</ul>" +
+        "<p>The simulated curve is essentially a histogram, and is jagged " +
+        "at first, then settles onto the theory curve as detections pile " +
+        "up — chance for each photon, certainty in the crowd. Hover the " +
+        "detector face for why the pattern has its current shape.</p>";
       case "detector": return detectorTipHTML();
     }
     return "";
@@ -1051,10 +1085,10 @@
   function regionAt(mx, my) {
     var bx = w2px(BARRIER_X), sx = w2px(SCREEN_X);
     var yTop = w2py(SH), yBot = w2py(-SH);
-    // detector: film panel (head-on view) or the screen line
+    // detector face (head-on panel) vs the edge-on screen line
     if (mx >= filmRect.x - 6 && mx <= filmRect.x + filmRect.w + 6 &&
         my >= filmRect.y - 6 && my <= filmRect.y + filmRect.h + 6) return "detector";
-    if (Math.abs(mx - sx) < 14 && my > yTop && my < yBot) return "detector";
+    if (Math.abs(mx - sx) < 14 && my > yTop && my < yBot) return "screen";
     // eraser polarizer strip
     if (state.mode === "practical" && state.tagging && state.eraser &&
         Math.abs(mx - w2px(POL_X)) < 14 && my > yTop - 30 && my < yBot) return "eraser";
