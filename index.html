@@ -1109,6 +1109,8 @@
   function hideTip() { tipEl.style.display = "none"; }
 
   document.addEventListener("mousemove", function (e) {
+    // HUD toggle buttons own their popup (delayed, handled below)
+    if (e.target.classList && e.target.classList.contains("simToggle")) return;
     if (e.target !== glCanvas && e.target !== document.body &&
         e.target !== document.documentElement) { hideTip(); return; }
     var region = regionAt(e.clientX, e.clientY);
@@ -1123,6 +1125,44 @@
     tipEl.style.top = Math.max(8, ty) + "px";
   });
   document.addEventListener("mouseleave", hideTip);
+
+  // HUD toggle buttons: popup after 1.5s of hover, shown above the button
+  var HUD_TIPS = {
+    btnObserve: "<b>Which-path detector.</b> Toggles the idealized detectors " +
+      "at the slits. <b>ON</b>: the universe keeps a record of each " +
+      "photon’s slit, and the interference stripes collapse into two " +
+      "overlapping heaps. <b>OFF</b>: no record exists, and stripes form.",
+    btnTagging: "<b>Polarization tags.</b> Toggles the tagging filters on " +
+      "the slits. <b>ON</b>: every photon carries a which-slit label " +
+      "(pink / green) and the stripes vanish — even though nothing reads " +
+      "the label. <b>OFF</b>: no label, stripes form. Switching tags off " +
+      "also switches off the quantum eraser.",
+    btnEraser: "<b>Quantum eraser.</b> Toggles the eraser polarizer before " +
+      "the screen. <b>ON</b>: the which-slit label is wiped from the " +
+      "photons that pass (the other half are absorbed), and shifted " +
+      "stripes return — rotate the angle in Tune Parameters. <b>OFF</b>: " +
+      "the labels survive to the screen and no stripes form."
+  };
+  var hudTipTimer = null;
+  ["btnObserve", "btnTagging", "btnEraser"].forEach(function (id) {
+    var btn = $(id);
+    function cancel() { clearTimeout(hudTipTimer); hideTip(); }
+    btn.addEventListener("mouseenter", function () {
+      clearTimeout(hudTipTimer);
+      if (btn.disabled) return;
+      hudTipTimer = setTimeout(function () {
+        tipEl.innerHTML = HUD_TIPS[id];
+        tipEl.style.display = "block";
+        var r = btn.getBoundingClientRect();
+        var tw = tipEl.offsetWidth, th = tipEl.offsetHeight;
+        var tx = Math.min(Math.max(8, r.left + r.width / 2 - tw / 2), W - tw - 8);
+        tipEl.style.left = tx + "px";
+        tipEl.style.top = (r.top - th - 10) + "px";
+      }, 1000);
+    });
+    btn.addEventListener("mouseleave", cancel);
+    btn.addEventListener("click", cancel);
+  });
 
   // ---------- main loop ----------
   rebuildTables();
